@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Live Sheet App</title>
+<meta name="theme-color" content="#0f766e">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<style>
+:root{
+  --accent:#0f766e; --accent-soft:#e6f4f2; --bg:#f4f6f8; --card:#fff; --text:#16202a; --muted:#5b6b7a; --line:#dde3e9;
+  --shadow:0 6px 20px rgba(16,32,48,.08), 0 1px 3px rgba(16,32,48,.06);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+  padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+header{background:var(--accent);color:#fff;padding:22px 16px 56px;position:relative;overflow:hidden}
+header::after{content:"";position:absolute;right:-60px;top:-60px;width:220px;height:220px;border-radius:50%;
+  background:rgba(255,255,255,.08);animation:float 9s ease-in-out infinite}
+@keyframes float{50%{transform:translate(-20px,20px) scale(1.1)}}
+header h1{margin:0;font-size:22px}
+header p{margin:6px 0 0;opacity:.85;font-size:14px}
+main{max-width:720px;margin:-36px auto 40px;padding:0 14px;display:grid;gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:18px;
+  animation:rise .5s cubic-bezier(.2,.8,.2,1) both}
+@keyframes rise{from{opacity:0;transform:translateY(12px)}}
+.card h2{margin:0 0 12px;font-size:17px;display:flex;align-items:center;gap:8px}
+label{display:block;font-size:13px;color:var(--muted);margin:12px 0 5px;font-weight:600}
+input,textarea{width:100%;font:inherit;font-size:16px;padding:12px 13px;border:1px solid var(--line);border-radius:12px;background:#fff;
+  transition:border-color .2s, box-shadow .2s}
+input:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+button{font:inherit;font-weight:700;border:0;border-radius:14px;padding:14px 18px;cursor:pointer;transition:transform .15s, box-shadow .2s, background .2s}
+.primary{background:var(--accent);color:#fff;width:100%;margin-top:18px;box-shadow:0 6px 14px rgba(15,118,110,.3)}
+.primary:hover{transform:translateY(-1px)}
+.primary:active{transform:scale(.98)}
+.primary:disabled{opacity:.6}
+.ghost{background:var(--accent-soft);color:var(--accent);padding:9px 14px;font-size:14px}
+.row{display:flex;justify-content:space-between;align-items:center}
+.status{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.dot{width:9px;height:9px;border-radius:50%;background:#b8c2cc}
+.dot.ok{background:#16a34a}.dot.bad{background:#dc2626}
+.entry{border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-top:10px;background:#fbfcfd;animation:rise .4s both}
+.entry div{display:flex;justify-content:space-between;gap:12px;font-size:14px;padding:3px 0}
+.entry b{color:var(--muted);font-weight:600}
+.entry span{text-align:right;word-break:break-word}
+.toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,40px);background:#16202a;color:#fff;padding:12px 18px;border-radius:14px;
+  opacity:0;transition:all .35s cubic-bezier(.2,.8,.2,1);box-shadow:var(--shadow);z-index:9;max-width:90%}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+#installBtn{display:none}
+.empty{color:var(--muted);font-size:14px;padding:8px 0}
+.skeleton{height:14px;border-radius:7px;background:linear-gradient(90deg,#eef1f4,#f8f9fb,#eef1f4);background-size:200% 100%;animation:sh 1.2s infinite;margin:10px 0}
+@keyframes sh{to{background-position:-200% 0}}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="appTitle">📋 Live Sheet App</h1>
+  <p>Everything you save goes straight into Google Sheets.</p>
+</header>
+
+<main>
+  <section class="card">
+    <div class="row">
+      <h2>✍️ New entry</h2>
+      <span class="status"><i class="dot" id="dot"></i><span id="statusText">Connecting…</span></span>
+    </div>
+    <form id="form" autocomplete="off"><div id="fields"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
+      <button class="primary" id="saveBtn" type="submit" disabled>💾 Save to Google Sheet</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <div class="row"><h2>🕒 Latest entries</h2><button class="ghost" id="refreshBtn" type="button">↻ Refresh</button></div>
+    <div id="list"><div class="skeleton"></div><div class="skeleton"></div></div>
+  </section>
+
+  <button class="ghost" id="installBtn" type="button">📲 Install as app</button>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ====== EDIT ONLY THESE 4 LINES ====== */
+const API_URL   = 'PASTE_YOUR_WEB_APP_URL_HERE';   // the URL ending in /exec
+const API_TOKEN = '';                              // same as API_TOKEN in api-addon.gs (or leave empty)
+const APP_TITLE = '📋 Live Sheet App';
+const HIDE_COLUMNS = [];                           // column names you do NOT want typed by users, e.g. ['ID']
+/* ===================================== */
+
+document.getElementById('appTitle').textContent = APP_TITLE;
+const $ = id => document.getElementById(id);
+let headers = [];
+
+function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('show'),2800)}
+function setStatus(ok,text){$('dot').className='dot '+(ok?'ok':'bad');$('statusText').textContent=text}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+
+async function apiGet(action,extra=''){
+  const url=API_URL+'?api='+action+(API_TOKEN?'&token='+encodeURIComponent(API_TOKEN):'')+extra;
+  const r=await fetch(url);
+  const j=await r.json();
+  if(!j.ok) throw new Error(j.error||'Unknown error');
+  return j;
+}
+
+async function loadHeaders(){
+  try{
+    const j=await apiGet('headers');
+    headers=j.headers.filter(h=>h&&!HIDE_COLUMNS.includes(h));
+    $('fields').innerHTML=headers.map((h,i)=>
+      `<label for="f${i}">${esc(h)}</label><input id="f${i}" data-h="${esc(h)}" type="text" inputmode="text">`).join('');
+    $('saveBtn').disabled=false;
+    setStatus(true,'Connected');
+  }catch(e){
+    setStatus(false,'Not connected');
+    $('fields').innerHTML='<p class="empty">Could not reach your Google Sheet. Check API_URL, that access is “Anyone”, and that you deployed a new version. ('+esc(e.message)+')</p>';
+  }
+}
+
+async function loadList(){
+  try{
+    const j=await apiGet('list','&limit=15');
+    if(!j.rows.length){$('list').innerHTML='<p class="empty">No entries yet.</p>';return}
+    $('list').innerHTML=j.rows.map(r=>'<div class="entry">'+j.headers.map((h,i)=>
+      r[i]!==''?`<div><b>${esc(h)}</b><span>${esc(r[i])}</span></div>`:'').join('')+'</div>').join('');
+  }catch(e){$('list').innerHTML='<p class="empty">Could not load entries.</p>'}
+}
+
+/* Offline safety: if there is no signal, entries wait on the phone and send later. */
+function getQueue(){try{return JSON.parse(localStorage.getItem('queue')||'[]')}catch(e){return[]}}
+function setQueue(q){try{localStorage.setItem('queue',JSON.stringify(q))}catch(e){}}
+
+async function send(values){
+  const r=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify({api:'add',token:API_TOKEN,values})});
+  const j=await r.json();
+  if(!j.ok) throw new Error(j.error||'Save failed');
+}
+async function flushQueue(){
+  let q=getQueue(); if(!q.length) return;
+  const left=[];
+  for(const v of q){try{await send(v)}catch(e){left.push(v)}}
+  setQueue(left);
+  if(left.length<q.length){toast('☁️ Sent saved entries'); loadList()}
+}
+
+$('form').addEventListener('submit',async ev=>{
+  ev.preventDefault();
+  const values={};
+  document.querySelectorAll('#fields input').forEach(i=>values[i.dataset.h]=i.value.trim());
+  if(!Object.values(values).some(v=>v)){toast('Please fill in something first');return}
+  const btn=$('saveBtn');btn.disabled=true;btn.textContent='Saving…';
+  try{
+    await send(values);
+    toast('✅ Saved to Google Sheet');
+    ev.target.reset(); loadList();
+  }catch(e){
+    const q=getQueue();q.push(values);setQueue(q);
+    toast('📴 No connection — saved on your device, will send later');
+    ev.target.reset();
+  }
+  btn.disabled=false;btn.textContent='💾 Save to Google Sheet';
+});
+$('refreshBtn').onclick=()=>{loadList();flushQueue()};
+window.addEventListener('online',flushQueue);
+
+/* Install button (Windows Chrome/Edge + Android Chrome) */
+let deferred;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e;$('installBtn').style.display='block'});
+$('installBtn').onclick=async()=>{if(!deferred)return;deferred.prompt();await deferred.userChoice;deferred=null;$('installBtn').style.display='none'};
+
+if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
+
+if(API_URL.startsWith('PASTE_')){
+  setStatus(false,'Setup needed');
+  $('fields').innerHTML='<p class="empty">Open <b>index.html</b> and paste your Web App URL into API_URL.</p>';
+}else{loadHeaders().then(()=>{loadList();flushQueue()})}
+</script>
+</body>
+</html>
